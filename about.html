@@ -930,6 +930,10 @@
     // ==================== CLOUDFLARE WORKER ====================
     const WORKER_URL = 'https://about-blank-chat.elix-hardy9.workers.dev';
 
+    // Exiger une nouvelle connexion à chaque ouverture de la page. Seul le courriel est mémorisé.
+    localStorage.removeItem('cf_jwt');
+    localStorage.setItem('msg_current_user', 'null');
+
     function getAuthToken() { return localStorage.getItem('cf_jwt') || null; }
 
     async function apiFetch(path, options = {}) {
@@ -2577,12 +2581,39 @@ Réponds toujours en français sauf si l'utilisateur écrit en anglais.`;
     }
     function setErr(msg) { const e = $('accError'); e.textContent = msg || ''; e.classList.toggle('show', !!msg); }
 
+    const loginOverlay = document.createElement('div');
+    loginOverlay.id = 'login-required-overlay';
+    loginOverlay.innerHTML = '<div class="login-required-card"><div class="login-required-title">about:blank</div><p class="login-required-copy">Connecte-toi pour continuer</p></div>';
+    Object.assign(loginOverlay.style, {
+      position: 'fixed', inset: '0', zIndex: '10000', display: 'none', alignItems: 'center', justifyContent: 'center',
+      padding: '24px', background: 'var(--bg)', color: 'var(--text)', overflowY: 'auto'
+    });
+    const loginCard = loginOverlay.firstElementChild;
+    Object.assign(loginCard.style, {
+      width: '100%', maxWidth: '380px', padding: '28px', borderRadius: '14px',
+      background: 'var(--card)', border: '1px solid var(--card-border)', boxShadow: '0 18px 60px rgba(0,0,0,.28)'
+    });
+    loginOverlay.querySelector('.login-required-title').style.cssText = 'font-size:26px;font-weight:700;text-align:center;margin-bottom:8px';
+    loginOverlay.querySelector('.login-required-copy').style.cssText = 'text-align:center;color:var(--muted);font-size:13px;margin:0 0 20px';
+    document.body.appendChild(loginOverlay);
+
+    function showRequiredLogin() {
+      loginOverlay.style.display = 'flex';
+      loginCard.appendChild($('accountBox'));
+      $('accEmail').focus();
+    }
+    function hideRequiredLogin() {
+      loginOverlay.style.display = 'none';
+      settingsMenu.appendChild($('accountBox'));
+    }
+
     function render() {
       const u = currentUser(), t = T();
       $('accLoggedOut').style.display = u ? 'none' : 'block';
       $('accLoggedIn').style.display = u ? 'block' : 'none';
       $('labelAccount').textContent = t.accTitle;
       $('accEmail').placeholder = t.accEmail;
+      if (!$('accEmail').value) $('accEmail').value = localStorage.getItem('cf_login_email') || '';
       $('accPw').placeholder = t.accPw;
       $('accUsername').placeholder = t.accUser;
       $('accUsername').style.display = registerMode ? 'block' : 'none';
@@ -2603,6 +2634,7 @@ Réponds toujours en français sauf si l'utilisateur écrit en anglais.`;
       const pw = $('accPw').value.trim();
       const username = $('accUsername').value.trim() || email.split('@')[0];
       if (!email || !pw) return;
+      localStorage.setItem('cf_login_email', email);
       setErr('');
       $('accSubmit').disabled = true;
       try {
@@ -2614,6 +2646,7 @@ Réponds toujours en français sauf si l'utilisateur écrit en anglais.`;
         $('accPw').value = '';
         render();
         reloadMsgFrame();
+        hideRequiredLogin();
       } catch (err) {
         const t = T();
         const msgs = { EMAIL_EXISTS: t.accErrExists, WEAK_PASSWORD: t.accErrWeak, INVALID_EMAIL: t.accErrEmail, INVALID_CREDENTIALS: t.accErrCreds };
@@ -2628,9 +2661,11 @@ Réponds toujours en français sauf si l'utilisateur écrit en anglais.`;
       const badge = $('msg-unread-badge'); if (badge) badge.style.display = 'none';
       render();
       reloadMsgFrame();
+      showRequiredLogin();
     }
 
     $('accSubmit').onclick = submit;
+    $('accEmail').addEventListener('input', () => localStorage.setItem('cf_login_email', $('accEmail').value.trim()));
     [$('accEmail'), $('accPw'), $('accUsername')].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); }));
     $('accToggle').onclick = () => { registerMode = !registerMode; setErr(''); render(); };
     $('accLogout').onclick = logout;
@@ -2647,6 +2682,8 @@ Réponds toujours en français sauf si l'utilisateur écrit en anglais.`;
     };
     window.renderAccount = render;
     render();
+    // À chaque arrivée dans about.html, afficher directement la connexion.
+    if (!currentUser()) showRequiredLogin();
   })();
   </script>
   <script>
